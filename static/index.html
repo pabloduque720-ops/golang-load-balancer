@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>HAProxy Manager</title>
+    <style>
+        body {
+            font-family: Arial;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        h2 {
+            color: #333;
+        }
+        input, button {
+            margin: 5px;
+            padding: 8px;
+        }
+        .card {
+            background: white;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+        button {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<h1>HAProxy Manager</h1>
+
+<div class="card">
+    <h2>Crear Balanceador</h2>
+    <input id="b_name" placeholder="Nombre">
+    <input id="b_ip" placeholder="IP">
+    <input id="b_port" placeholder="Puerto (ej: 80)">
+    <button onclick="createBalancer()">Crear</button>
+</div>
+
+<div class="card">
+    <h2>Agregar Servidor</h2>
+    <input id="s_balancer" placeholder="Balancer ID">
+    <input id="s_name" placeholder="Nombre">
+    <input id="s_ip" placeholder="IP">
+    <input id="s_port" placeholder="Puerto">
+    <button onclick="createServer()">Agregar</button>
+</div>
+
+<div class="card">
+    <h2>Aplicar Configuración</h2>
+    <button onclick="applyConfig()">Aplicar HAProxy</button>
+</div>
+
+<div class="card">
+    <h2>Ver Balanceadores</h2>
+    <button onclick="loadBalancers()">Cargar</button>
+    <pre id="balancers"></pre>
+</div>
+
+<div class="card">
+    <h2>Ver Servidores</h2>
+    <input id="filter_id" placeholder="Balancer ID">
+    <button onclick="loadServers()">Cargar</button>
+    <pre id="servers"></pre>
+</div>
+
+<script>
+function createBalancer() {
+    fetch('/balancers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            name: document.getElementById('b_name').value,
+            ip_address: document.getElementById('b_ip').value,
+            frontend_port: parseInt(document.getElementById('b_port').value),
+            algorithm: "roundrobin"
+        })
+    }).then(r => r.json()).then(alert);
+}
+
+function createServer() {
+    fetch('/servers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            balancer_id: parseInt(document.getElementById('s_balancer').value),
+            name: document.getElementById('s_name').value,
+            ip_address: document.getElementById('s_ip').value,
+            port: parseInt(document.getElementById('s_port').value)
+        })
+    }).then(r => r.json()).then(alert);
+}
+
+function applyConfig() {
+    fetch('/haproxy/apply', { method: 'POST' })
+    .then(r => r.json())
+    .then(alert);
+}
+
+function loadBalancers() {
+    fetch('/balancers')
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('balancers').innerText = JSON.stringify(data, null, 2);
+    });
+}
+
+function loadServers() {
+    const id = document.getElementById('filter_id').value;
+    fetch('/servers?balancer_id=' + id)
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('servers').innerText = JSON.stringify(data, null, 2);
+    });
+}
+</script>
+
+</body>
+</html>

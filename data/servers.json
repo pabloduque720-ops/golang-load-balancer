@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "balancer_id": 1,
+    "name": "srv1",
+    "ip_address": "192.168.1.16",
+    "port": 8084
+  },
+  {
+    "id": 2,
+    "balancer_id": 1,
+    "name": "srv2",
+    "ip_address": "192.168.1.14",
+    "port": 8084
+  },
+  {
+    "id": 3,
+    "balancer_id": 2,
+    "name": "srv1",
+    "ip_address": "192.168.1.13",
+    "port": 8084
+  },
+  {
+    "id": 4,
+    "balancer_id": 2,
+    "name": "srv2",
+    "ip_address": "192.168.1.15",
+    "port": 8084
+  },
+  {
+    "id": 5,
+    "balancer_id": 2,
+    "name": "srv3",
+    "ip_address": "192.168.1.17",
+    "port": 8084
+  },
+  {
+    "id": 6,
+    "balancer_id": 1,
+    "name": "srv3",
+    "ip_address": "192.168.1.18",
+    "port": 8084
+  }
+]
