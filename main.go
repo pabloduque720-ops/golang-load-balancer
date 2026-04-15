@@ -47,10 +47,43 @@ func applyHAProxyRoute(w http.ResponseWriter, r *http.Request) {
 	handlers.ApplyFullHAProxyConfig(w, r)
 }
 
+func autoscaleConfigRoute(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		handlers.GetAutoScaleConfigHandler(w, r)
+	case http.MethodPost:
+		handlers.SaveAutoScaleConfigHandler(w, r)
+	default:
+		utils.WriteError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func autoscaleStateRoute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		utils.WriteError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	handlers.GetAutoScaleStateHandler(w, r)
+}
+
+func autoscaleCheckRoute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.WriteError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	handlers.CheckAutoScaleHandler(w, r)
+}
+
 func main() {
 	http.HandleFunc("/balancers", balancersRoute)
 	http.HandleFunc("/servers", serversRoute)
 	http.HandleFunc("/haproxy/apply", applyHAProxyRoute)
+
+	http.HandleFunc("/autoscale/config", autoscaleConfigRoute)
+	http.HandleFunc("/autoscale/state", autoscaleStateRoute)
+	http.HandleFunc("/autoscale/check", autoscaleCheckRoute)
 
 	fs := http.FileServer(http.Dir("./static"))
 	http.Handle("/", fs)

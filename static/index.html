@@ -5,14 +5,14 @@
     <title>HAProxy Manager</title>
     <style>
         body {
-            font-family: Arial;
+            font-family: Arial, sans-serif;
             margin: 20px;
             background: #f5f5f5;
         }
-        h2 {
+        h1, h2 {
             color: #333;
         }
-        input, button {
+        input, button, select {
             margin: 5px;
             padding: 8px;
         }
@@ -21,9 +21,24 @@
             padding: 15px;
             margin-bottom: 20px;
             border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
         }
-        button {
-            cursor: pointer;
+        pre {
+            background: #111;
+            color: #0f0;
+            padding: 10px;
+            border-radius: 6px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .row input, .row select {
+            flex: 1;
+            min-width: 180px;
         }
     </style>
 </head>
@@ -33,24 +48,29 @@
 
 <div class="card">
     <h2>Crear Balanceador</h2>
-    <input id="b_name" placeholder="Nombre">
-    <input id="b_ip" placeholder="IP">
-    <input id="b_port" placeholder="Puerto (ej: 80)">
+    <div class="row">
+        <input id="b_name" placeholder="Nombre">
+        <input id="b_ip" placeholder="IP">
+        <input id="b_port" placeholder="Puerto (ej: 80)">
+    </div>
     <button onclick="createBalancer()">Crear</button>
 </div>
 
 <div class="card">
     <h2>Agregar Servidor</h2>
-    <input id="s_balancer" placeholder="Balancer ID">
-    <input id="s_name" placeholder="Nombre">
-    <input id="s_ip" placeholder="IP">
-    <input id="s_port" placeholder="Puerto">
+    <div class="row">
+        <input id="s_balancer" placeholder="Balancer ID">
+        <input id="s_name" placeholder="Nombre">
+        <input id="s_ip" placeholder="IP">
+        <input id="s_port" placeholder="Puerto">
+    </div>
     <button onclick="createServer()">Agregar</button>
 </div>
 
 <div class="card">
-    <h2>Aplicar Configuración</h2>
+    <h2>Aplicar Configuración HAProxy</h2>
     <button onclick="applyConfig()">Aplicar HAProxy</button>
+    <pre id="apply_result"></pre>
 </div>
 
 <div class="card">
@@ -61,12 +81,55 @@
 
 <div class="card">
     <h2>Ver Servidores</h2>
-    <input id="filter_id" placeholder="Balancer ID">
+    <div class="row">
+        <input id="filter_id" placeholder="Balancer ID">
+    </div>
     <button onclick="loadServers()">Cargar</button>
     <pre id="servers"></pre>
 </div>
 
+<div class="card">
+    <h2>Configuración de Elasticidad Automática</h2>
+    <div class="row">
+        <select id="a_enabled">
+            <option value="true">Habilitado</option>
+            <option value="false">Deshabilitado</option>
+        </select>
+        <input id="a_balancer_id" placeholder="Balancer ID">
+        <input id="a_ssh_user" placeholder="SSH User (ej: server1)">
+    </div>
+    <div class="row">
+        <input id="a_high_threshold" placeholder="Umbral alto CPU (%)">
+        <input id="a_low_threshold" placeholder="Umbral bajo CPU (%)">
+        <input id="a_sample_seconds" placeholder="Frecuencia muestreo (s)">
+    </div>
+    <div class="row">
+        <input id="a_sustain_seconds" placeholder="Tiempo sostenido (s)">
+        <input id="a_min_instances" placeholder="Mínimo instancias">
+        <input id="a_max_instances" placeholder="Máximo instancias">
+    </div>
+    <div class="row">
+        <input id="a_template_vm_name" placeholder="Nombre VM plantilla">
+        <input id="a_base_disk_name_prefix" placeholder="Prefijo discos/VMs auto">
+        <input id="a_app_port" placeholder="Puerto app (ej: 8084)">
+    </div>
+    <button onclick="saveAutoScaleConfig()">Guardar Configuración</button>
+    <button onclick="loadAutoScaleConfig()">Cargar Configuración</button>
+    <pre id="autoscale_config_result"></pre>
+</div>
+
+<div class="card">
+    <h2>Estado del Autoscaling</h2>
+    <button onclick="loadAutoScaleState()">Ver Estado</button>
+    <button onclick="checkAutoScale()">Ejecutar Chequeo Manual</button>
+    <pre id="autoscale_state"></pre>
+</div>
+
 <script>
+function showJSON(id, data) {
+    document.getElementById(id).innerText = JSON.stringify(data, null, 2);
+}
+
 function createBalancer() {
     fetch('/balancers', {
         method: 'POST',
@@ -77,7 +140,9 @@ function createBalancer() {
             frontend_port: parseInt(document.getElementById('b_port').value),
             algorithm: "roundrobin"
         })
-    }).then(r => r.json()).then(alert);
+    })
+    .then(r => r.json())
+    .then(data => showJSON('balancers', data));
 }
 
 function createServer() {
@@ -90,30 +155,86 @@ function createServer() {
             ip_address: document.getElementById('s_ip').value,
             port: parseInt(document.getElementById('s_port').value)
         })
-    }).then(r => r.json()).then(alert);
+    })
+    .then(r => r.json())
+    .then(data => showJSON('servers', data));
 }
 
 function applyConfig() {
     fetch('/haproxy/apply', { method: 'POST' })
     .then(r => r.json())
-    .then(alert);
+    .then(data => showJSON('apply_result', data));
 }
 
 function loadBalancers() {
     fetch('/balancers')
     .then(r => r.json())
-    .then(data => {
-        document.getElementById('balancers').innerText = JSON.stringify(data, null, 2);
-    });
+    .then(data => showJSON('balancers', data));
 }
 
 function loadServers() {
     const id = document.getElementById('filter_id').value;
     fetch('/servers?balancer_id=' + id)
     .then(r => r.json())
+    .then(data => showJSON('servers', data));
+}
+
+function saveAutoScaleConfig() {
+    const payload = {
+        enabled: document.getElementById('a_enabled').value === 'true',
+        high_threshold: parseFloat(document.getElementById('a_high_threshold').value),
+        low_threshold: parseFloat(document.getElementById('a_low_threshold').value),
+        sample_seconds: parseInt(document.getElementById('a_sample_seconds').value),
+        sustain_seconds: parseInt(document.getElementById('a_sustain_seconds').value),
+        min_instances: parseInt(document.getElementById('a_min_instances').value),
+        max_instances: parseInt(document.getElementById('a_max_instances').value),
+        balancer_id: parseInt(document.getElementById('a_balancer_id').value),
+        template_vm_name: document.getElementById('a_template_vm_name').value,
+        base_disk_name_prefix: document.getElementById('a_base_disk_name_prefix').value,
+        app_port: parseInt(document.getElementById('a_app_port').value),
+        ssh_user: document.getElementById('a_ssh_user').value
+    };
+
+    fetch('/autoscale/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => showJSON('autoscale_config_result', data));
+}
+
+function loadAutoScaleConfig() {
+    fetch('/autoscale/config')
+    .then(r => r.json())
     .then(data => {
-        document.getElementById('servers').innerText = JSON.stringify(data, null, 2);
+        showJSON('autoscale_config_result', data);
+
+        document.getElementById('a_enabled').value = String(data.enabled);
+        document.getElementById('a_high_threshold').value = data.high_threshold ?? '';
+        document.getElementById('a_low_threshold').value = data.low_threshold ?? '';
+        document.getElementById('a_sample_seconds').value = data.sample_seconds ?? '';
+        document.getElementById('a_sustain_seconds').value = data.sustain_seconds ?? '';
+        document.getElementById('a_min_instances').value = data.min_instances ?? '';
+        document.getElementById('a_max_instances').value = data.max_instances ?? '';
+        document.getElementById('a_balancer_id').value = data.balancer_id ?? '';
+        document.getElementById('a_template_vm_name').value = data.template_vm_name ?? '';
+        document.getElementById('a_base_disk_name_prefix').value = data.base_disk_name_prefix ?? '';
+        document.getElementById('a_app_port').value = data.app_port ?? '';
+        document.getElementById('a_ssh_user').value = data.ssh_user ?? '';
     });
+}
+
+function loadAutoScaleState() {
+    fetch('/autoscale/state')
+    .then(r => r.json())
+    .then(data => showJSON('autoscale_state', data));
+}
+
+function checkAutoScale() {
+    fetch('/autoscale/check', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => showJSON('autoscale_state', data));
 }
 </script>
 

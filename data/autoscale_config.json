@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "high_threshold": 70,
+  "low_threshold": 25,
+  "sample_seconds": 10,
+  "sustain_seconds": 60,
+  "min_instances": 2,
+  "max_instances": 4,
+  "balancer_id": 1,
+  "template_vm_name": "server-template",
+  "base_disk_name_prefix": "server-auto",
+  "app_port": 8084,
+  "ssh_user": "server1"
+}
