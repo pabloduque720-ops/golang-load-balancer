@@ -76,6 +76,54 @@ func autoscaleCheckRoute(w http.ResponseWriter, r *http.Request) {
 	handlers.CheckAutoScaleHandler(w, r)
 }
 
+func stressStartRoute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.WriteError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	handlers.StartStressHandler(w, r)
+}
+
+func stressStopRoute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.WriteError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	handlers.StopStressHandler(w, r)
+}
+
+func autoscaleScaleOutRoute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.WriteError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	handlers.ManualScaleOutHandler(w, r)
+}
+
+func autoscaleScaleInRoute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.WriteError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	handlers.ManualScaleInHandler(w, r)
+}
+
+func autoscaleStartRoute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.WriteError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	handlers.StartAutoScaleHandler(w, r)
+}
+
+func autoscaleStopRoute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.WriteError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	handlers.StopAutoScaleHandler(w, r)
+}
+
 func main() {
 	http.HandleFunc("/balancers", balancersRoute)
 	http.HandleFunc("/servers", serversRoute)
@@ -84,6 +132,15 @@ func main() {
 	http.HandleFunc("/autoscale/config", autoscaleConfigRoute)
 	http.HandleFunc("/autoscale/state", autoscaleStateRoute)
 	http.HandleFunc("/autoscale/check", autoscaleCheckRoute)
+
+	http.HandleFunc("/stress/start", stressStartRoute)
+	http.HandleFunc("/stress/stop", stressStopRoute)
+
+	http.HandleFunc("/autoscale/scale-out", autoscaleScaleOutRoute)
+	http.HandleFunc("/autoscale/scale-in", autoscaleScaleInRoute)
+
+	http.HandleFunc("/autoscale/start", autoscaleStartRoute)
+	http.HandleFunc("/autoscale/stop", autoscaleStopRoute)
 
 	fs := http.FileServer(http.Dir("./static"))
 	http.Handle("/", fs)

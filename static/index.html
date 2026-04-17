@@ -113,6 +113,9 @@
         <input id="a_base_disk_name_prefix" placeholder="Prefijo discos/VMs auto">
         <input id="a_app_port" placeholder="Puerto app (ej: 8084)">
     </div>
+    <div class="row">
+        <input id="a_available_hosts" placeholder="Hosts disponibles separados por coma (ej: 192.168.1.9,192.168.1.10)">
+    </div>
     <button onclick="saveAutoScaleConfig()">Guardar Configuración</button>
     <button onclick="loadAutoScaleConfig()">Cargar Configuración</button>
     <pre id="autoscale_config_result"></pre>
@@ -122,7 +125,29 @@
     <h2>Estado del Autoscaling</h2>
     <button onclick="loadAutoScaleState()">Ver Estado</button>
     <button onclick="checkAutoScale()">Ejecutar Chequeo Manual</button>
+    <button onclick="startAutoScale()">Iniciar Autoscaling</button>
+    <button onclick="stopAutoScale()">Detener Autoscaling</button>
     <pre id="autoscale_state"></pre>
+</div>
+
+<div class="card">
+    <h2>Simulación de Carga con stress-ng</h2>
+    <div class="row">
+        <input id="stress_host" placeholder="IP del servidor (ej: 192.168.1.7)">
+        <input id="stress_user" placeholder="SSH User (ej: server1)">
+        <input id="stress_cpu" placeholder="CPU workers (ej: 2)">
+        <input id="stress_timeout" placeholder="Duración en segundos (ej: 60)">
+    </div>
+    <button onclick="startStress()">Iniciar Estrés</button>
+    <button onclick="stopStress()">Detener Estrés</button>
+    <pre id="stress_result"></pre>
+</div>
+
+<div class="card">
+    <h2>Acciones Manuales de Elasticidad</h2>
+    <button onclick="manualScaleOut()">Scale Out Manual</button>
+    <button onclick="manualScaleIn()">Scale In Manual</button>
+    <pre id="autoscale_actions_result"></pre>
 </div>
 
 <script>
@@ -180,6 +205,11 @@ function loadServers() {
 }
 
 function saveAutoScaleConfig() {
+    const hostsRaw = document.getElementById('a_available_hosts').value.trim();
+    const availableHosts = hostsRaw
+        ? hostsRaw.split(',').map(h => h.trim()).filter(h => h !== '')
+        : [];
+
     const payload = {
         enabled: document.getElementById('a_enabled').value === 'true',
         high_threshold: parseFloat(document.getElementById('a_high_threshold').value),
@@ -192,7 +222,8 @@ function saveAutoScaleConfig() {
         template_vm_name: document.getElementById('a_template_vm_name').value,
         base_disk_name_prefix: document.getElementById('a_base_disk_name_prefix').value,
         app_port: parseInt(document.getElementById('a_app_port').value),
-        ssh_user: document.getElementById('a_ssh_user').value
+        ssh_user: document.getElementById('a_ssh_user').value,
+        available_hosts: availableHosts
     };
 
     fetch('/autoscale/config', {
@@ -222,6 +253,7 @@ function loadAutoScaleConfig() {
         document.getElementById('a_base_disk_name_prefix').value = data.base_disk_name_prefix ?? '';
         document.getElementById('a_app_port').value = data.app_port ?? '';
         document.getElementById('a_ssh_user').value = data.ssh_user ?? '';
+        document.getElementById('a_available_hosts').value = (data.available_hosts || []).join(', ');
     });
 }
 
@@ -233,6 +265,62 @@ function loadAutoScaleState() {
 
 function checkAutoScale() {
     fetch('/autoscale/check', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => showJSON('autoscale_state', data));
+}
+
+function startStress() {
+    const payload = {
+        host: document.getElementById('stress_host').value,
+        ssh_user: document.getElementById('stress_user').value,
+        cpu_workers: parseInt(document.getElementById('stress_cpu').value),
+        timeout_secs: parseInt(document.getElementById('stress_timeout').value)
+    };
+
+    fetch('/stress/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => showJSON('stress_result', data));
+}
+
+function stopStress() {
+    const payload = {
+        host: document.getElementById('stress_host').value,
+        ssh_user: document.getElementById('stress_user').value
+    };
+
+    fetch('/stress/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => showJSON('stress_result', data));
+}
+
+function manualScaleOut() {
+    fetch('/autoscale/scale-out', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => showJSON('autoscale_actions_result', data));
+}
+
+function manualScaleIn() {
+    fetch('/autoscale/scale-in', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => showJSON('autoscale_actions_result', data));
+}
+
+function startAutoScale() {
+    fetch('/autoscale/start', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => showJSON('autoscale_state', data));
+}
+
+function stopAutoScale() {
+    fetch('/autoscale/stop', { method: 'POST' })
     .then(r => r.json())
     .then(data => showJSON('autoscale_state', data));
 }

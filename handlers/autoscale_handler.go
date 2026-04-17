@@ -59,3 +59,27 @@ func CheckAutoScaleHandler(w http.ResponseWriter, r *http.Request) {
 		"details": details,
 	})
 }
+
+func StartAutoScaleHandler(w http.ResponseWriter, r *http.Request) {
+	err := services.StartAutoScaleLoop()
+	if err != nil {
+		utils.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.WriteJSON(w, http.StatusOK, map[string]string{
+		"message": "autoscaling loop started successfully",
+	})
+}
+
+func StopAutoScaleHandler(w http.ResponseWriter, r *http.Request) {
+	err := services.StopAutoScaleLoop()
+	if err != nil {
+		utils.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.WriteJSON(w, http.StatusOK, map[string]string{
+		"message": "autoscaling loop stopped successfully",
+	})
+}

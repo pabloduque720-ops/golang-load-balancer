@@ -27,7 +27,6 @@ func parseCPUStatLine(line string) (idle uint64, total uint64, err error) {
 		total += v
 	}
 
-	// idle + iowait
 	idle = values[3]
 	if len(values) > 4 {
 		idle += values[4]
@@ -36,57 +35,64 @@ func parseCPUStatLine(line string) (idle uint64, total uint64, err error) {
 	return idle, total, nil
 }
 
+func extractCPUStatLines(output string) []string {
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, 2)
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "cpu ") {
+			result = append(result, line)
+		}
+	}
+
+	return result
+}
+
 func readRemoteCPUStat(cfg SSHConfig) (idle uint64, total uint64, err error) {
-	cmd := "cat /proc/stat | head -n 1"
-	output, err := RunSSHCommand(cfg, cmd)
+	output, err := RunSSHCommand(cfg, "cat /proc/stat | head -n 1")
 	if err != nil {
 		return 0, 0, err
 	}
 
-	line := strings.TrimSpace(output)
-	return parseCPUStatLine(line)
+	cpuLines := extractCPUStatLines(output)
+	if len(cpuLines) == 0 {
+		return 0, 0, fmt.Errorf("no valid cpu line found in output: %s", output)
+	}
+
+	return parseCPUStatLine(cpuLines[0])
 }
 
 func GetRemoteCPUUsage(cfg SSHConfig) (float64, error) {
-	idle1, total1, err := readRemoteCPUStat(cfg)
-	if err != nil {
-		return 0, err
-	}
-
-	// pequeña espera remota no sirve; la espera la hacemos localmente con un segundo comando
-	// para mantenerlo simple usamos sleep remoto entre lecturas
 	output, err := RunSSHCommand(cfg, "sh -c 'cat /proc/stat | head -n 1; sleep 1; cat /proc/stat | head -n 1'")
 	if err != nil {
 		return 0, err
 	}
 
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	if len(lines) < 2 {
-		return 0, fmt.Errorf("could not read two cpu samples")
+	cpuLines := extractCPUStatLines(output)
+	if len(cpuLines) < 2 {
+		return 0, fmt.Errorf("could not read two valid cpu samples from output: %s", output)
 	}
 
-	idleA, totalA, err := parseCPUStatLine(strings.TrimSpace(lines[0]))
+	idle1, total1, err := parseCPUStatLine(cpuLines[0])
 	if err != nil {
 		return 0, err
 	}
 
-	idleB, totalB, err := parseCPUStatLine(strings.TrimSpace(lines[1]))
+	idle2, total2, err := parseCPUStatLine(cpuLines[1])
 	if err != nil {
 		return 0, err
 	}
 
-	// usamos la segunda medición doble si salió bien
-	idle1 = idleA
-	total1 = totalA
-
-	deltaIdle := float64(idleB - idle1)
-	deltaTotal := float64(totalB - total1)
+	deltaIdle := float64(idle2 - idle1)
+	deltaTotal := float64(total2 - total1)
 
 	if deltaTotal <= 0 {
 		return 0, fmt.Errorf("invalid cpu delta")
 	}
 
 	usage := 100.0 * (deltaTotal - deltaIdle) / deltaTotal
+
 	if usage < 0 {
 		usage = 0
 	}

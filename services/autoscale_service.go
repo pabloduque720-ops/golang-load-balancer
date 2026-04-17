@@ -2,10 +2,17 @@ package services
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"haproxy-manager/models"
 	"haproxy-manager/storage"
+)
+
+var (
+	autoScaleRunning bool
+	autoScaleStopCh  chan struct{}
+	autoScaleMutex   sync.Mutex
 )
 
 func ValidateAutoScaleConfig(cfg models.AutoScaleConfig) error {
@@ -52,6 +59,82 @@ func GetAutoScaleState() (models.AutoScaleState, error) {
 	return storage.LoadAutoScaleState()
 }
 
+func IsAutoScaleRunning() bool {
+	autoScaleMutex.Lock()
+	defer autoScaleMutex.Unlock()
+	return autoScaleRunning
+}
+
+func StartAutoScaleLoop() error {
+	autoScaleMutex.Lock()
+	defer autoScaleMutex.Unlock()
+
+	if autoScaleRunning {
+		return fmt.Errorf("autoscaling is already running")
+	}
+
+	cfg, err := storage.LoadAutoScaleConfig()
+	if err != nil {
+		return err
+	}
+
+	if err := ValidateAutoScaleConfig(cfg); err != nil {
+		return err
+	}
+
+	autoScaleStopCh = make(chan struct{})
+	autoScaleRunning = true
+
+	state, _ := storage.LoadAutoScaleState()
+	state.IsRunning = true
+	state.LastAction = "autoscaling_loop_started"
+	state.LastActionTime = time.Now().Format(time.RFC3339)
+	_ = storage.SaveAutoScaleState(state)
+
+	go func() {
+		ticker := time.NewTicker(time.Duration(cfg.SampleSeconds) * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				_, _, err := CheckAutoScaleNow()
+				if err != nil {
+					state, _ := storage.LoadAutoScaleState()
+					state.LastAction = "autoscaling_loop_error: " + err.Error()
+					state.LastActionTime = time.Now().Format(time.RFC3339)
+					_ = storage.SaveAutoScaleState(state)
+				}
+
+			case <-autoScaleStopCh:
+				return
+			}
+		}
+	}()
+
+	return nil
+}
+
+func StopAutoScaleLoop() error {
+	autoScaleMutex.Lock()
+	defer autoScaleMutex.Unlock()
+
+	if !autoScaleRunning {
+		return fmt.Errorf("autoscaling is not running")
+	}
+
+	close(autoScaleStopCh)
+	autoScaleRunning = false
+
+	state, _ := storage.LoadAutoScaleState()
+	state.IsRunning = false
+	state.LastAction = "autoscaling_loop_stopped"
+	state.LastActionTime = time.Now().Format(time.RFC3339)
+	_ = storage.SaveAutoScaleState(state)
+
+	return nil
+}
+
 func CheckAutoScaleNow() (models.AutoScaleState, []map[string]interface{}, error) {
 	cfg, err := storage.LoadAutoScaleConfig()
 	if err != nil {
@@ -77,37 +160,78 @@ func CheckAutoScaleNow() (models.AutoScaleState, []map[string]interface{}, error
 		return models.AutoScaleState{}, nil, err
 	}
 
+	now := time.Now().Format(time.RFC3339)
+
 	state.LastCPUAverage = avgCPU
 	state.ActiveInstances = len(servers)
-	state.IsRunning = cfg.Enabled
+	state.IsRunning = IsAutoScaleRunning()
+
+	if !cfg.Enabled {
+		state.LastAction = "autoscaling_disabled"
+		state.LastActionTime = now
+		state.HighCounter = 0
+		state.LowCounter = 0
+
+		if err := storage.SaveAutoScaleState(state); err != nil {
+			return models.AutoScaleState{}, nil, err
+		}
+
+		return state, details, nil
+	}
 
 	if avgCPU > cfg.HighThreshold {
 		state.HighCounter += cfg.SampleSeconds
 		state.LowCounter = 0
 
 		if state.HighCounter >= cfg.SustainSeconds {
-			state.LastAction = "scale_out_condition_detected"
-			state.LastActionTime = time.Now().Format(time.RFC3339)
+			_, actionErr := ManualScaleOut()
+			if actionErr != nil {
+				state.LastAction = "scale_out_failed: " + actionErr.Error()
+				state.LastActionTime = now
+			} else {
+				state.LastAction = "scale_out_executed"
+				state.LastActionTime = now
+
+				updatedServers, _ := GetServersByBalancerID(cfg.BalancerID)
+				state.ActiveInstances = len(updatedServers)
+			}
+
+			state.HighCounter = 0
+			state.LowCounter = 0
 		} else {
 			state.LastAction = "high_cpu_detected_waiting"
-			state.LastActionTime = time.Now().Format(time.RFC3339)
+			state.LastActionTime = now
 		}
+
 	} else if avgCPU < cfg.LowThreshold {
 		state.LowCounter += cfg.SampleSeconds
 		state.HighCounter = 0
 
 		if state.LowCounter >= cfg.SustainSeconds {
-			state.LastAction = "scale_in_condition_detected"
-			state.LastActionTime = time.Now().Format(time.RFC3339)
+			_, actionErr := ManualScaleIn()
+			if actionErr != nil {
+				state.LastAction = "scale_in_failed: " + actionErr.Error()
+				state.LastActionTime = now
+			} else {
+				state.LastAction = "scale_in_executed"
+				state.LastActionTime = now
+
+				updatedServers, _ := GetServersByBalancerID(cfg.BalancerID)
+				state.ActiveInstances = len(updatedServers)
+			}
+
+			state.HighCounter = 0
+			state.LowCounter = 0
 		} else {
 			state.LastAction = "low_cpu_detected_waiting"
-			state.LastActionTime = time.Now().Format(time.RFC3339)
+			state.LastActionTime = now
 		}
+
 	} else {
 		state.HighCounter = 0
 		state.LowCounter = 0
 		state.LastAction = "within_thresholds"
-		state.LastActionTime = time.Now().Format(time.RFC3339)
+		state.LastActionTime = now
 	}
 
 	if err := storage.SaveAutoScaleState(state); err != nil {
